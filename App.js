@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, Platform, Easing, AppState } from 'react-native';
+import { useKeepAwake } from '@sayem314/react-native-keep-awake';
+
 import WelcomeScreen from './screens/WelcomeScreen';
 import AuthScreen from './screens/AuthScreen';
 import OrientationChoiceScreen from './screens/OrientationChoiceScreen';
@@ -15,33 +17,99 @@ import LiveMakkahScreen from './screens/LiveMakkahScreen';
 import LiveMadinaScreen from './screens/LiveMadinaScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
+import DailyWirdScreen from './screens/DailyWirdScreen';
 import CustomDrawerContent from './components/CustomDrawerContent';
+
 
 
 const Drawer = createDrawerNavigator();
 const Stack = createStackNavigator();
+const MainStack = createStackNavigator();
+
+// Stack Navigator داخل Drawer لإضافة animations
+function MainStackNavigator() {
+  return (
+    <MainStack.Navigator
+      initialRouteName="PrayerTimes"
+      screenOptions={{
+        headerShown: false,
+        // Animation واضح وسلس للتنقل بين الصفحات
+        cardStyleInterpolator: ({ current, next, layouts }) => {
+          return {
+            cardStyle: {
+              opacity: current.progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1],
+              }),
+              transform: [
+                {
+                  translateX: current.progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [layouts.screen.width * 0.3, 0],
+                  }),
+                },
+                {
+                  scale: current.progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1],
+                  }),
+                },
+              ],
+            },
+            overlayStyle: {
+              opacity: current.progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 0.5],
+              }),
+            },
+          };
+        },
+        transitionSpec: {
+          open: {
+            animation: 'timing',
+            config: {
+              duration: 1000,
+              easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+            },
+          },
+          close: {
+            animation: 'timing',
+            config: {
+              duration: 900,
+              easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+            },
+          },
+        },
+        gestureEnabled: false,
+      }}
+    >
+      <MainStack.Screen name="PrayerTimes" component={PrayerTimes} />
+      <MainStack.Screen name="azkar" component={AzkarScreen} />
+      <MainStack.Screen name="quran" component={QuranScreen} />
+      <MainStack.Screen name="dailyWird" component={DailyWirdScreen} />
+      <MainStack.Screen name="makkah live" component={LiveMakkahScreen} />
+      <MainStack.Screen name="madina live" component={LiveMadinaScreen} />
+      <MainStack.Screen name="setting" component={SettingsScreen} />
+    </MainStack.Navigator>
+  );
+}
 
 function DrawerNavigator() {
   return (
-  <Drawer.Navigator
-      initialRouteName="PrayerTimes"
+    <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         drawerPosition: 'left',
         headerShown: false,
         drawerStyle: {
-          width: 320,
+          width: 250,
+          backgroundColor:'transparent',
         },
+        overlayColor:'transparent',
+        sceneContentColor:{backgroundColor:'transparent'},
       }}
     >
-
-      <Drawer.Screen name="PrayerTimes" component={PrayerTimes} />
-      <Drawer.Screen name="azkar" component={AzkarScreen} />
-      <Drawer.Screen name="quran" component={QuranScreen} />
-      <Drawer.Screen name="makkah live" component={LiveMakkahScreen} />
-      <Drawer.Screen name="madina live" component={LiveMadinaScreen} />
-      <Drawer.Screen name="setting" component={SettingsScreen} />
-      {/* <Drawer.Screen name="onboarding-test" component={OnboardingScreen} /> */}
+      <Drawer.Screen name="MainStack" component={MainStackNavigator} />
     </Drawer.Navigator>
   );
 }
@@ -68,11 +136,30 @@ const getDeviceType = () => {
 };
 
 export default function App() {
+  // 🔥 Keep Awake - يمنع الشاشة من النوم
+  useKeepAwake();
+
   const [initialRoute, setInitialRoute] = useState('Welcome');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    console.log('✅ Keep Awake is active - Screen will not sleep');
     checkAuthState();
+
+    // 📊 مراقبة حالة التطبيق (اختياري للـ logging)
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      console.log(`📱 App state changed to: ${nextAppState}`);
+      
+      if (nextAppState === 'active') {
+        console.log('🟢 App is in foreground - Keep Awake active');
+      } else if (nextAppState === 'background') {
+        console.log('🟡 App went to background - Keep Awake paused');
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   const checkAuthState = async () => {
@@ -128,7 +215,7 @@ export default function App() {
       }
     } catch (error) {
       console.log('Error checking auth state:', error);
-      // في حالة الخطأ، استخدم portrait كافتراضي
+      // في حالة الخطأ، استخدم landscape كافتراضي
       await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       setInitialRoute('Welcome');
     } finally {
@@ -142,7 +229,30 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+      <Stack.Navigator 
+        initialRouteName={initialRoute} 
+        screenOptions={{ 
+          headerShown: false,
+          // إضافة animation للـ Stack Navigator
+          cardStyleInterpolator: CardStyleInterpolators.forFadeFromCenter,
+          transitionSpec: {
+            open: {
+              animation: 'timing',
+              config: {
+                duration: 900,
+                easing: Easing.out(Easing.ease),
+              },
+            },
+            close: {
+              animation: 'timing',
+              config: {
+                duration: 650,
+                easing: Easing.in(Easing.ease),
+              },
+            },
+          },
+        }}
+      >
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="Auth" component={AuthScreen} />
         <Stack.Screen name="OrientationChoice" component={OrientationChoiceScreen} />

@@ -1,142 +1,84 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  BackHandler,
-  AppState,
-} from 'react-native';
-import { useTVRemote } from '../hooks/useTVRemote';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, BackHandler } from 'react-native';
+import { useDrawerStatus } from '@react-navigation/drawer';
 
-const { height } = Dimensions.get('window');
+const menuItems = [
+  { label: 'أوقات الصلاة', route: 'PrayerTimes' },
+  { label: 'الأذكار', route: 'azkar' },
+  { label: 'القرآن الكريم', route: 'quran' },
+  { label: 'الورد اليومي', route: 'dailyWird' },
+  { label: 'مكة مباشر', route: 'makkah live' },
+  { label: 'المدينة مباشر', route: 'madina live' },
+  { label: 'الإعدادات', route: 'setting' },
+];
 
 export default function CustomDrawerContent({ navigation, state }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const itemsRefs = useRef([]);
-
-  const screens = [
-    { name: 'PrayerTimes', label: 'أوقات الصلاة' },
-    { name: 'azkar', label: 'الأذكار' },
-    { name: 'quran', label: 'القرآن الكريم' },
-    { name: 'makkah live', label: 'مكة مباشر' },
-    { name: 'madina live', label: 'المدينة مباشر' },
-    { name: 'setting', label: 'الإعدادات' },
-  ];
-
-  useTVRemote({
-    onBack: () => {
-      console.log('🎮 Closing drawer');
-      navigation.closeDrawer();
-    },
-  });
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const firstItemRef = useRef(null);
+  const drawerStatus = useDrawerStatus();
+  const isOpen = drawerStatus === 'open';
 
   useEffect(() => {
-    const handleKeyEvent = (keyCode) => {
-      console.log('🔘 Key pressed:', keyCode);
+    if (isOpen) {
+      setFocusedIndex(0);
+      setTimeout(() => {
+        if (firstItemRef.current) {
+          firstItemRef.current.focus?.();
+        }
+      }, 100);
+    }
+  }, [isOpen]);
 
-      if (keyCode === 20) { // KEY_DOWN
-        console.log(`⬇️ DOWN: ${currentIndex} -> ${currentIndex + 1}`);
-        if (currentIndex < screens.length - 1) {
-          const newIndex = currentIndex + 1;
-          setCurrentIndex(newIndex);
-        }
-      } else if (keyCode === 19) { // KEY_UP
-        console.log(`⬆️ UP: ${currentIndex} -> ${currentIndex - 1}`);
-        if (currentIndex > 0) {
-          const newIndex = currentIndex - 1;
-          setCurrentIndex(newIndex);
-        }
-      } else if (keyCode === 23) { // KEY_CENTER / OK
-        console.log(`✅ SELECT at index ${currentIndex}`);
-        handlePress(screens[currentIndex].name, currentIndex);
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isOpen) {
+        navigation.closeDrawer();
+        return true;
       }
-    };
-
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      console.log('🎮 Back pressed');
-      navigation.closeDrawer();
-      return true;
+      return false;
     });
+    return () => backHandler.remove();
+  }, [isOpen, navigation]);
 
-    return subscription.remove;
-  }, [currentIndex, screens, navigation]);
-
-  const handlePress = (screenName, index) => {
-    console.log(`🎮 [${index}] Navigating to:`, screenName);
-    navigation.navigate(screenName);
-    setTimeout(() => navigation.closeDrawer(), 150);
+  const handlePress = (route) => {
+    // التنقل إلى الصفحة داخل MainStack مع animation
+    navigation.navigate('MainStack', { 
+      screen: route,
+      params: { timestamp: Date.now() } // لضمان حدوث animation حتى لو كانت نفس الصفحة
+    });
+    setTimeout(() => navigation.closeDrawer(), 100);
   };
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      {/* <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.headerAccent} />
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.headerMainTitle}>Simple</Text>
-            <Text style={styles.headerSubTitle}>Sidebar Menu</Text>
-          </View>
-        </View>
-      </View> */}
+      {menuItems.map((item, index) => {
+        const isFocused = index === focusedIndex;
 
-      {/* Menu Items */}
-      <View style={styles.menuContainer}>
-        {screens.map((screen, index) => {
-          const hasFocus = index === currentIndex;
-
-          return (
-            <TouchableOpacity
-              key={screen.name}
-              ref={(ref) => {
-                itemsRefs.current[index] = ref;
-                if (hasFocus && ref) {
-                  try {
-                    ref.setNativeProps({
-                      hasTVPreferredFocus: true,
-                    });
-                  } catch (e) {
-                    console.log('Error setting native props:', e);
-                  }
-                }
-              }}
-              onPress={() => handlePress(screen.name, index)}
-              focusable={true}
-              hasTVPreferredFocus={index === 0}
-              onFocus={() => {
-                console.log(`✅ FOCUS [${index}]: ${screen.label}`);
-                setCurrentIndex(index);
-              }}
-              onBlur={() => {
-                console.log(`❌ BLUR [${index}]: ${screen.label}`);
-              }}
-              style={[
-                styles.menuItem,
-                hasFocus && styles.menuItemFocused,
-              ]}
-            >
-              {hasFocus && <View style={styles.menuItemAccent} />}
-              
-              <View style={styles.menuItemContent}>
-                <View style={[
-                  styles.menuItemDot,
-                  hasFocus && styles.menuItemDotActive
-                ]} />
-                <Text
-                  style={[
-                    styles.menuItemText,
-                    hasFocus && styles.menuItemTextActive,
-                  ]}
-                >
-                  {screen.label}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+        return (
+          <TouchableOpacity
+            key={item.route}
+            ref={index === 0 ? firstItemRef : null}
+            onFocus={() => setFocusedIndex(index)}
+            focusable={true}
+            hasTVPreferredFocus={index === 0 && isOpen}
+            onPress={() => handlePress(item.route)}
+            style={[styles.item, isFocused && styles.itemFocused]}
+            activeOpacity={0.7}
+            tvParallaxProperties={{
+              enabled: true,
+              shiftDistanceX: 2.0,
+              shiftDistanceY: 2.0,
+              tiltAngle: 0.05,
+              magnification: 1.1,
+              pressMagnification: 1.0,
+            }}
+          >
+            <Text style={[styles.label, isFocused && styles.labelFocused]}>
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -144,103 +86,45 @@ export default function CustomDrawerContent({ navigation, state }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#ffffffff',
+    paddingTop: 5,
+    paddingHorizontal: 10,
   },
-  header: {
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  headerAccent: {
-    width: 5,
-    height: 48,
-    backgroundColor: '#2E8B57',
-    borderRadius: 3,
-    marginRight: 12,
-  },
-  headerTextContainer: {
-    justifyContent: 'center',
-  },
-  headerMainTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1a73e8',
-    lineHeight: 32,
-  },
-  headerSubTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
-    marginTop: 2,
-  },
-  menuContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  menuItem: {
-    marginVertical: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    overflow: 'hidden',
-    flexDirection: 'row',
-    alignItems: 'center',
+  item: {
     paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
-    height: 56,
+    paddingHorizontal: 20,
+    marginVertical: 2,
+    borderRadius: 8,
+    backgroundColor: '#ffffffff',
+    // TV Focus styles - make them stronger
+    ...(Platform.isTV && {
+      borderWidth: 3,
+      borderColor: 'transparent',
+    }),
   },
-  menuItemFocused: {
-    backgroundColor: '#f0f8f5',
-    borderColor: '#2E8B57',
-    borderWidth: 2,
-    shadowColor: '#2E8B57',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+  itemFocused: {
+    backgroundColor: '#1976D2',
+    borderLeftWidth: 4,
+    borderLeftColor: '#0D47A1',
+    // Force strong focus styles for TV
+    ...(Platform.isTV && {
+      borderWidth: 3,
+      borderColor: '#0D47A1',
+      elevation: 8,
+      shadowColor: '#1976D2',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.6,
+      shadowRadius: 8,
+      transform: [{ scale: 1.05 }],
+    }),
   },
-  menuItemAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: '#2E8B57',
-  },
-  menuItemContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  menuItemDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#e0e0e0',
-    marginRight: 12,
-  },
-  menuItemDotActive: {
-    backgroundColor: '#2E8B57',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  menuItemText: {
+  label: {
     fontSize: 16,
-    fontWeight: '500',
     color: '#333333',
-    flex: 1,
+    fontWeight: '500',
   },
-  menuItemTextActive: {
-    color: '#2E8B57',
+  labelFocused: {
+    color: '#ffffff',
     fontWeight: '700',
     fontSize: 17,
   },

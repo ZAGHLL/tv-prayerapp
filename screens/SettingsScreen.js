@@ -1,17 +1,5 @@
 import React, { useEffect, useState , useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  TextInput,
-  ScrollView,
-  Alert,
-  Animated,
-  Modal,
-  FlatList,
-  Image
-} from 'react-native';
+import {View,Text,TouchableOpacity,StyleSheet,TextInput,ScrollView,Alert,Animated,Modal,FlatList,Image,Platform, findNodeHandle} from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -201,6 +189,25 @@ const [locationMethod, setLocationMethod] = useState('gps');
 const [manualLat, setManualLat] = useState('');
 const [manualLon, setManualLon] = useState('');
 
+
+// إنشاء refs لتخزين الإشارة إلى حقول الإدخال
+const iqamaInputRefs = useRef([]);
+const blackScreenInputRefs = useRef([]);
+
+const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha', 'Jumuah']; // أضفنا الجمعة هنا
+const numColumns = isLandscape ? 6 : 3; // عدد الأعمدة بناءً على اتجاه الشاشة
+
+const getPrayerNameInArabic = (englishName) => {
+  const prayerNames = {
+    'Fajr': 'الفجر',
+    'Dhuhr': 'الظهر',
+    'Asr': 'العصر',
+    'Maghrib': 'المغرب',
+    'Isha': 'العشاء'
+  };
+  return prayerNames[englishName] || englishName;
+};
+
   
   const [newsEnabled, setNewsEnabled] = useState(false);
   const [newsText, setNewsText] = useState('');
@@ -230,13 +237,21 @@ const [manualLon, setManualLon] = useState('');
     Maghrib: '',
     Isha: ''
   });
-    const inputRefs = useRef({});
+  const [blackScreenText, setBlackScreenText] = useState('وقت الصلاة');
+  // Friday specific overrides
+  const [fridayIqamaMinutes, setFridayIqamaMinutes] = useState('');
+  const [fridayBlackScreenMinutes, setFridayBlackScreenMinutes] = useState('');
+
+  // ============ TV REMOTE NAVIGATION SYSTEM (Android TV) ============
+  
+  // ============ END TV REMOTE NAVIGATION SYSTEM ============
 
 
   // Auto navigation settings
   const [autoNavigationEnabled, setAutoNavigationEnabled] = useState(false);
   const [azkarEnabled, setAzkarEnabled] = useState(false);
   const [quranEnabled, setQuranEnabled] = useState(false);
+  const [dailyWirdEnabled, setDailyWirdEnabled] = useState(false);
   const [liveStreamEnabled, setLiveStreamEnabled] = useState(false);
   const [liveMadinaEnabled, setLiveMadinaEnabled] = useState(false);
   
@@ -245,6 +260,10 @@ const [manualLon, setManualLon] = useState('');
     duration: ''
   });
   const [quranSettings, setQuranSettings] = useState({
+    startAfter: '',
+    duration: ''
+  });
+  const [dailyWirdSettings, setDailyWirdSettings] = useState({
     startAfter: '',
     duration: ''
   });
@@ -257,55 +276,144 @@ const [manualLon, setManualLon] = useState('');
     duration: ''
   });
 
+  // Daily Wird page flip settings
+  const [dailyWirdImagesCount, setDailyWirdImagesCount] = useState('');
+  const [dailyWirdMinutesPerImage, setDailyWirdMinutesPerImage] = useState('');
+
+  // ============ Pre-Prayer Auto Navigation Settings (قبل الصلاة) ============
+  const [preAutoNavigationEnabled, setPreAutoNavigationEnabled] = useState(false);
+  const [preAzkarEnabled, setPreAzkarEnabled] = useState(false);
+  const [preQuranEnabled, setPreQuranEnabled] = useState(false);
+  const [preDailyWirdEnabled, setPreDailyWirdEnabled] = useState(false);
+  const [preLiveStreamEnabled, setPreLiveStreamEnabled] = useState(false);
+  const [preLiveMadinaEnabled, setPreLiveMadinaEnabled] = useState(false);
+  
+  const [preAzkarSettings, setPreAzkarSettings] = useState({
+    startBefore: '',
+    duration: ''
+  });
+  const [preQuranSettings, setPreQuranSettings] = useState({
+    startBefore: '',
+    duration: ''
+  });
+  const [preDailyWirdSettings, setPreDailyWirdSettings] = useState({
+    startBefore: '',
+    duration: ''
+  });
+  const [preLiveStreamSettings, setPreLiveStreamSettings] = useState({
+    startBefore: '',
+    duration: ''
+  });
+  const [preLiveMadinaSettings, setPreLiveMadinaSettings] = useState({
+    startBefore: '',
+    duration: ''
+  });
+
+  // Pre-Prayer Daily Wird page flip settings
+  const [preDailyWirdImagesCount, setPreDailyWirdImagesCount] = useState('');
+  const [preDailyWirdMinutesPerImage, setPreDailyWirdMinutesPerImage] = useState('');
+
   // Background image settings
+  
+// التأكد من أن مصفوفة الـ refs لها الطول الصحيح
+useEffect(() => {
+  iqamaInputRefs.current = iqamaInputRefs.current.slice(0, prayers.length);
+  blackScreenInputRefs.current = blackScreenInputRefs.current.slice(0, prayers.length);
+}, [prayers]);
+
+  // Keep Daily Wird duration computed from imagesCount x minutesPerImage
+  useEffect(() => {
+    const images = parseInt(dailyWirdImagesCount) || 0;
+    const minutes = parseInt(dailyWirdMinutesPerImage) || 0;
+    const total = images * minutes;
+    setDailyWirdSettings(prev => ({ ...prev, duration: total ? String(total) : '' }));
+  }, [dailyWirdImagesCount, dailyWirdMinutesPerImage]);
+
+  // Keep Pre-Prayer Daily Wird duration computed from imagesCount x minutesPerImage
+  useEffect(() => {
+    const images = parseInt(preDailyWirdImagesCount) || 0;
+    const minutes = parseInt(preDailyWirdMinutesPerImage) || 0;
+    const total = images * minutes;
+    setPreDailyWirdSettings(prev => ({ ...prev, duration: total ? String(total) : '' }));
+  }, [preDailyWirdImagesCount, preDailyWirdMinutesPerImage]);
+
   const [backgroundImage, setBackgroundImage] = useState(null);
   const [isDefaultBackground, setIsDefaultBackground] = useState(true);
+  const isLandscape = orientation === 'landscape';
+
+  // ============ نظام الفوكس الجديد للريموت ============
+const [focusedKey, setFocusedKey] = useState(null);
+
+// دالة لتتبع العنصر المحدد
+const handleNewFocus = useCallback((key) => {
+  setFocusedKey(key);
+}, []);
+
+// دالة لإلغاء التحديد
+const handleNewBlur = useCallback(() => {
+  setFocusedKey(null);
+}, []);
+
+// دالة للتحقق من التحديد
+const isElementFocused = useCallback((key) => {
+  return focusedKey === key;
+}, [focusedKey]);
 
   // إضافة state للتحقق من التعارض
   const [conflictErrors, setConflictErrors] = useState({
     azkar: { startAfter: false, duration: false, message: '' },
     quran: { startAfter: false, duration: false, message: '' },
+    dailyWird: { startAfter: false, duration: false, message: '' },
     liveStream: { startAfter: false, duration: false, message: '' },
     liveMadina: { startAfter: false, duration: false, message: '' }
   });
 
   // دالة للتحقق من التعارض مع إظهار الأخطاء
   const checkConflictWithErrors = () => {
-    const screens = [
-      { 
-        type: 'azkar', 
-        enabled: azkarEnabled, 
-        startAfter: azkarSettings.startAfter, 
-        duration: azkarSettings.duration,
-        name: 'الأذكار'
-      },
-      { 
-        type: 'quran', 
-        enabled: quranEnabled, 
-        startAfter: quranSettings.startAfter, 
-        duration: quranSettings.duration,
-        name: 'القرآن'
-      },
-      { 
-        type: 'liveStream', 
-        enabled: liveStreamEnabled, 
-        startAfter: liveStreamSettings.startAfter, 
-        duration: liveStreamSettings.duration,
-        name: 'البث المباشر من مكة'
-      },
-      { 
-        type: 'liveMadina', 
-        enabled: liveMadinaEnabled, 
-        startAfter: liveMadinaSettings.startAfter, 
-        duration: liveMadinaSettings.duration,
-        name: 'صفحة المدينة المنورة المباشرة'
-      }
-    ];
+    try {
+      const screens = [
+        { 
+          type: 'azkar', 
+          enabled: azkarEnabled, 
+          startAfter: azkarSettings?.startAfter || '', 
+          duration: azkarSettings?.duration || '',
+          name: 'الأذكار'
+        },
+        { 
+          type: 'quran', 
+          enabled: quranEnabled, 
+          startAfter: quranSettings?.startAfter || '', 
+          duration: quranSettings?.duration || '',
+          name: 'القرآن'
+        },
+        { 
+          type: 'dailyWird', 
+          enabled: dailyWirdEnabled, 
+          startAfter: dailyWirdSettings?.startAfter || '', 
+          duration: dailyWirdSettings?.duration || '',
+          name: 'الورد اليومي'
+        },
+        { 
+          type: 'liveStream', 
+          enabled: liveStreamEnabled, 
+          startAfter: liveStreamSettings?.startAfter || '', 
+          duration: liveStreamSettings?.duration || '',
+          name: 'البث المباشر من مكة'
+        },
+        { 
+          type: 'liveMadina', 
+          enabled: liveMadinaEnabled, 
+          startAfter: liveMadinaSettings?.startAfter || '', 
+          duration: liveMadinaSettings?.duration || '',
+          name: 'صفحة المدينة المنورة المباشرة'
+        }
+      ];
 
     // تصفير الأخطاء
     const newErrors = {
       azkar: { startAfter: false, duration: false, message: '' },
       quran: { startAfter: false, duration: false, message: '' },
+      dailyWird: { startAfter: false, duration: false, message: '' },
       liveStream: { startAfter: false, duration: false, message: '' },
       liveMadina: { startAfter: false, duration: false, message: '' }
     };
@@ -350,31 +458,41 @@ const [manualLon, setManualLon] = useState('');
       }
     }
 
-    setConflictErrors(newErrors);
-    
-    // إرجاع ما إذا كان هناك أي تعارض
-    return Object.values(newErrors).some(error => error.startAfter || error.duration);
+      setConflictErrors(newErrors);
+      
+      // إرجاع ما إذا كان هناك أي تعارض
+      return Object.values(newErrors).some(error => error.startAfter || error.duration);
+    } catch (error) {
+      console.log('Error in checkConflictWithErrors:', error);
+      return false;
+    }
   };
 
   // تشغيل التحقق من التعارض عند تغيير أي إعداد
   useEffect(() => {
-    if (autoNavigationEnabled) {
-      checkConflictWithErrors();
-    } else {
-      // مسح الأخطاء إذا كان التنقل التلقائي غير مفعل
-      setConflictErrors({
-        azkar: { startAfter: false, duration: false, message: '' },
-        quran: { startAfter: false, duration: false, message: '' },
-        liveStream: { startAfter: false, duration: false, message: '' },
-        liveMadina: { startAfter: false, duration: false, message: '' }
-      });
+    try {
+      if (autoNavigationEnabled) {
+        checkConflictWithErrors();
+      } else {
+        // مسح الأخطاء إذا كان التنقل التلقائي غير مفعل
+        setConflictErrors({
+          azkar: { startAfter: false, duration: false, message: '' },
+          quran: { startAfter: false, duration: false, message: '' },
+          dailyWird: { startAfter: false, duration: false, message: '' },
+          liveStream: { startAfter: false, duration: false, message: '' },
+          liveMadina: { startAfter: false, duration: false, message: '' }
+        });
+      }
+    } catch (error) {
+      console.log('Error in conflict check useEffect:', error);
     }
   }, [
     autoNavigationEnabled,
-    azkarEnabled, azkarSettings.startAfter, azkarSettings.duration,
-    quranEnabled, quranSettings.startAfter, quranSettings.duration,
-    liveStreamEnabled, liveStreamSettings.startAfter, liveStreamSettings.duration,
-    liveMadinaEnabled, liveMadinaSettings.startAfter, liveMadinaSettings.duration
+    azkarEnabled, azkarSettings?.startAfter, azkarSettings?.duration,
+    quranEnabled, quranSettings?.startAfter, quranSettings?.duration,
+    dailyWirdEnabled, dailyWirdSettings?.startAfter, dailyWirdSettings?.duration,
+    liveStreamEnabled, liveStreamSettings?.startAfter, liveStreamSettings?.duration,
+    liveMadinaEnabled, liveMadinaSettings?.startAfter, liveMadinaSettings?.duration
   ]);
 
   // التحقق من التداخل بين الصفحات
@@ -382,6 +500,7 @@ const [manualLon, setManualLon] = useState('');
     const screens = [
       { type: 'azkar', enabled: azkarEnabled, startAfter: azkarSettings.startAfter, duration: azkarSettings.duration },
       { type: 'quran', enabled: quranEnabled, startAfter: quranSettings.startAfter, duration: quranSettings.duration },
+      { type: 'dailyWird', enabled: dailyWirdEnabled, startAfter: dailyWirdSettings.startAfter, duration: dailyWirdSettings.duration },
       { type: 'liveMakkah', enabled: liveStreamEnabled, startAfter: liveStreamSettings.startAfter, duration: liveStreamSettings.duration },
       { type: 'liveMadina', enabled: liveMadinaEnabled, startAfter: liveMadinaSettings.startAfter, duration: liveMadinaSettings.duration }
     ];
@@ -430,6 +549,7 @@ const [manualLon, setManualLon] = useState('');
     switch (screenType) {
       case 'azkar': return 'الأذكار';
       case 'quran': return 'القرآن';
+      case 'dailyWird': return 'الورد اليومي';
       case 'liveMakkah': return 'البث المباشر من مكة';
       case 'liveMadina': return 'صفحة المدينة المنورة المباشرة';
       default: return screenType;
@@ -494,6 +614,70 @@ const [manualLon, setManualLon] = useState('');
     }
 
     setQuranSettings(newSettings);
+  };
+
+  const handleDailyWirdSettingsChange = (field, value) => {
+    const newSettings = { ...dailyWirdSettings, [field]: value };
+    
+    if (dailyWirdEnabled && field === 'startAfter' && newSettings.duration !== '') {
+      const conflict = checkTimeConflict('dailyWird', value, newSettings.duration);
+      if (conflict.hasConflict) {
+        Alert.alert(
+          '⚠️ تعارض في المواعيد',
+          `يوجد تداخل بين صفحة الورد اليومي وصفحة ${conflict.conflictScreens[1]}. يرجى تعديل المواعيد.`,
+          [{ text: 'حسناً' }]
+        );
+        return;
+      }
+    }
+    
+    if (dailyWirdEnabled && field === 'duration' && newSettings.startAfter !== '') {
+      const conflict = checkTimeConflict('dailyWird', newSettings.startAfter, value);
+      if (conflict.hasConflict) {
+        Alert.alert(
+          '⚠️ تعارض في المواعيد',
+          `يوجد تداخل بين صفحة الورد اليومي وصفحة ${conflict.conflictScreens[1]}. يرجى تعديل المواعيد.`,
+          [{ text: 'حسناً' }]
+        );
+        return;
+      }
+    }
+
+    setDailyWirdSettings(newSettings);
+  };
+
+  // دالة لإعادة بدء الورد اليومي من الصفحة الأولى
+  const handleRestartDailyWird = async () => {
+    try {
+      Alert.alert(
+        'إعادة بدء الورد اليومي',
+        'هل تريد بدء الورد من الصفحة الأولى؟',
+        [
+          {
+            text: 'إلغاء',
+            style: 'cancel'
+          },
+          {
+            text: 'نعم',
+            onPress: async () => {
+              await AsyncStorage.setItem('dailyWirdBaseIndex', '0');
+              Alert.alert(
+                'تم بنجاح',
+                'سيبدأ الورد اليومي من الصفحة الأولى في المرة القادمة',
+                [{ text: 'حسناً' }]
+              );
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      Alert.alert(
+        'خطأ',
+        'حدث خطأ أثناء إعادة تعيين الورد اليومي',
+        [{ text: 'حسناً' }]
+      );
+      console.error('Error resetting daily wird:', error);
+    }
   };
 
   const handleLiveStreamSettingsChange = (field, value) => {
@@ -569,6 +753,10 @@ const [manualLon, setManualLon] = useState('');
           startAfter = quranSettings.startAfter;
           duration = quranSettings.duration;
           break;
+        case 'dailyWird':
+          startAfter = dailyWirdSettings.startAfter;
+          duration = dailyWirdSettings.duration;
+          break;
         case 'liveMakkah':
           startAfter = liveStreamSettings.startAfter;
           duration = liveStreamSettings.duration;
@@ -599,11 +787,60 @@ const [manualLon, setManualLon] = useState('');
       case 'quran':
         setQuranEnabled(enabled);
         break;
+      case 'dailyWird':
+        setDailyWirdEnabled(enabled);
+        break;
       case 'liveMakkah':
         setLiveStreamEnabled(enabled);
         break;
       case 'liveMadina':
         setLiveMadinaEnabled(enabled);
+        break;
+    }
+  };
+
+  // ============ Pre-Prayer Handlers (قبل الصلاة) ============
+  const handlePreAzkarSettingsChange = (field, value) => {
+    const newSettings = { ...preAzkarSettings, [field]: value };
+    setPreAzkarSettings(newSettings);
+  };
+
+  const handlePreQuranSettingsChange = (field, value) => {
+    const newSettings = { ...preQuranSettings, [field]: value };
+    setPreQuranSettings(newSettings);
+  };
+
+  const handlePreDailyWirdSettingsChange = (field, value) => {
+    const newSettings = { ...preDailyWirdSettings, [field]: value };
+    setPreDailyWirdSettings(newSettings);
+  };
+
+  const handlePreLiveStreamSettingsChange = (field, value) => {
+    const newSettings = { ...preLiveStreamSettings, [field]: value };
+    setPreLiveStreamSettings(newSettings);
+  };
+
+  const handlePreLiveMadinaSettingsChange = (field, value) => {
+    const newSettings = { ...preLiveMadinaSettings, [field]: value };
+    setPreLiveMadinaSettings(newSettings);
+  };
+
+  const handlePreScreenToggle = (screenType, enabled) => {
+    switch (screenType) {
+      case 'azkar':
+        setPreAzkarEnabled(enabled);
+        break;
+      case 'quran':
+        setPreQuranEnabled(enabled);
+        break;
+      case 'dailyWird':
+        setPreDailyWirdEnabled(enabled);
+        break;
+      case 'liveMakkah':
+        setPreLiveStreamEnabled(enabled);
+        break;
+      case 'liveMadina':
+        setPreLiveMadinaEnabled(enabled);
         break;
     }
   };
@@ -631,10 +868,43 @@ const [manualLon, setManualLon] = useState('');
     }, [])
   );
 
+  // دالة لمسح البيانات التالفة وإعادة تحميل الإعدادات
+  const resetCorruptedData = async () => {
+    try {
+      console.log('Resetting corrupted data...');
+      await AsyncStorage.removeItem('postPrayerSettings');
+      setAutoNavigationEnabled(false);
+      setAzkarEnabled(false);
+      setQuranEnabled(false);
+      setDailyWirdEnabled(false);
+      setLiveStreamEnabled(false);
+      setLiveMadinaEnabled(false);
+      setAzkarSettings({ startAfter: '', duration: '' });
+      setQuranSettings({ startAfter: '', duration: '' });
+      setDailyWirdSettings({ startAfter: '', duration: '' });
+      setLiveStreamSettings({ startAfter: '', duration: '' });
+      setLiveMadinaSettings({ startAfter: '', duration: '' });
+      setDailyWirdImagesCount('');
+      setDailyWirdMinutesPerImage('');
+      console.log('Corrupted data reset successfully');
+    } catch (error) {
+      console.log('Error resetting corrupted data:', error);
+    }
+  };
+
   useEffect(() => {
-    loadSettings();
-    loadSelectedCity();
-    requestPermissions();
+    const initSettings = async () => {
+      try {
+        await loadSettings();
+        await loadSelectedCity();
+        await requestPermissions();
+      } catch (error) {
+        console.log('Critical error in initialization, resetting data:', error);
+        await resetCorruptedData();
+      }
+    };
+    
+    initSettings();
   }, []);
 
   const requestPermissions = async () => {
@@ -792,98 +1062,196 @@ const updateLocationFromGPS = async () => {
   );
 };
 
-  const loadSettings = async () => {
-    try {
-    const storedNews = await AsyncStorage.getItem('newsSettings');
-    if (storedNews) {
-      const parsedNews = JSON.parse(storedNews);
-      setNewsEnabled(parsedNews.enabled);
-      setNewsText(parsedNews.text);
-    }
-      
-      const name = await AsyncStorage.getItem('mosqueName');
-      const iqama = await AsyncStorage.getItem('iqamaTimes');
-      const durations = await AsyncStorage.getItem('prayerDurations');
-      
-      // Load background image settings
-      const savedBackgroundImage = await AsyncStorage.getItem('backgroundImage');
-      const savedIsDefaultBackground = await AsyncStorage.getItem('isDefaultBackground');
-      
-      if (savedBackgroundImage) {
-        setBackgroundImage(savedBackgroundImage);
-      }
-      if (savedIsDefaultBackground !== null) {
-        setIsDefaultBackground(JSON.parse(savedIsDefaultBackground));
-      }
-      
-      // Load black screen settings
-      const blackScreenSettings = await AsyncStorage.getItem('blackScreenSettings');
-      if (blackScreenSettings) {
-        const parsedBlackScreen = JSON.parse(blackScreenSettings);
-        setBlackScreenEnabled(parsedBlackScreen.enabled || false);
-        setBlackScreenDurations(parsedBlackScreen.durations || {
-          Fajr: '',
-          Dhuhr: '',
-          Asr: '',
-          Maghrib: '',
-          Isha: ''
-        });
-      }
-
-      // Load auto navigation settings
-      const autoNavSettings = await AsyncStorage.getItem('postPrayerSettings');
-      if (autoNavSettings) {
-        const parsedAutoNav = JSON.parse(autoNavSettings);
-        setAutoNavigationEnabled(parsedAutoNav.enabled || false);
-        
-        if (parsedAutoNav.screens) {
-          setAzkarEnabled(parsedAutoNav.screens.azkar?.enabled || false);
-          setQuranEnabled(parsedAutoNav.screens.quran?.enabled || false);
-          setLiveStreamEnabled(parsedAutoNav.screens.liveMakkah?.enabled || false);
-          setLiveMadinaEnabled(parsedAutoNav.screens.liveMadina?.enabled || false);
-          
-          setAzkarSettings({
-            startAfter: parsedAutoNav.screens.azkar?.startAfter?.toString() || '',
-            duration: parsedAutoNav.screens.azkar?.duration?.toString() || ''
-          });
-          setQuranSettings({
-            startAfter: parsedAutoNav.screens.quran?.startAfter?.toString() || '',
-            duration: parsedAutoNav.screens.quran?.duration?.toString() || ''
-          });
-          setLiveStreamSettings({
-            startAfter: parsedAutoNav.screens.liveMakkah?.startAfter?.toString() || '',
-            duration: parsedAutoNav.screens.liveMakkah?.duration?.toString() || ''
-          });
-          setLiveMadinaSettings({
-            startAfter: parsedAutoNav.screens.liveMadina?.startAfter?.toString() || '',
-            duration: parsedAutoNav.screens.liveMadina?.duration?.toString() || ''
-          });
+const loadSettings = async () => {
+  try {
+    // ✅ اقرأ كل الإعدادات مرة واحدة
+    const keys = [
+      'newsSettings',
+      'mosqueName',
+      'iqamaTimes',
+      'prayerDurations',
+      'backgroundImage',
+      'isDefaultBackground',
+      'blackScreenSettings',
+      'fridaySettings',
+      'postPrayerSettings',
+      'prePrayerSettings'
+    ];
+    
+    const results = await AsyncStorage.multiGet(keys);
+    
+    // ✅ معالجة النتائج
+    const settings = {};
+    results.forEach(([key, value]) => {
+      if (value) {
+        try {
+          settings[key] = JSON.parse(value);
+        } catch {
+          settings[key] = value;
         }
       }
-      
-      if (name) setMosqueName(name);
-      if (iqama) setIqamaTimes(JSON.parse(iqama));
-      if (durations) setPrayerDurations(JSON.parse(durations));
-    } catch (error) {
-      console.log('Error loading settings:', error);
+    });
+    
+    // ✅ تحديث news settings
+    if (settings.newsSettings) {
+      setNewsEnabled(settings.newsSettings.enabled || false);
+      setNewsText(settings.newsSettings.text || '');
     }
-  };
+    
+    // ✅ تحديث basic settings
+    if (settings.mosqueName) setMosqueName(settings.mosqueName);
+    if (settings.iqamaTimes) setIqamaTimes(settings.iqamaTimes);
+    if (settings.prayerDurations) setPrayerDurations(settings.prayerDurations);
+    
+    // ✅ تحديث background settings
+    if (settings.backgroundImage) setBackgroundImage(settings.backgroundImage);
+    if (settings.isDefaultBackground !== undefined) {
+      setIsDefaultBackground(settings.isDefaultBackground);
+    }
+    
+    // ✅ تحديث black screen settings
+    if (settings.blackScreenSettings) {
+      setBlackScreenEnabled(settings.blackScreenSettings.enabled || false);
+      setBlackScreenDurations(settings.blackScreenSettings.durations || {
+        Fajr: '', Dhuhr: '', Asr: '', Maghrib: '', Isha: ''
+      });
+      setBlackScreenText(settings.blackScreenSettings.text || 'وقت الصلاة');
+    }
+
+    // ✅ تحديث Friday settings
+    if (settings.fridaySettings) {
+      const parsedFriday = settings.fridaySettings;
+      setFridayIqamaMinutes(parsedFriday?.iqamaJumuah ? String(parsedFriday.iqamaJumuah) : '');
+      setFridayBlackScreenMinutes(parsedFriday?.blackScreenJumuah ? String(parsedFriday.blackScreenJumuah) : '');
+    }
+
+    // ✅ تحديث auto navigation settings
+    if (settings.postPrayerSettings) {
+      const parsedAutoNav = settings.postPrayerSettings;
+      setAutoNavigationEnabled(parsedAutoNav.enabled || false);
+      
+      if (parsedAutoNav.screens) {
+        setAzkarEnabled(parsedAutoNav.screens.azkar?.enabled || false);
+        setQuranEnabled(parsedAutoNav.screens.quran?.enabled || false);
+        setDailyWirdEnabled(parsedAutoNav.screens.dailyWird?.enabled || false);
+        setLiveStreamEnabled(parsedAutoNav.screens.liveMakkah?.enabled || false);
+        setLiveMadinaEnabled(parsedAutoNav.screens.liveMadina?.enabled || false);
+        
+        const azkarStartAfter = parsedAutoNav.screens.azkar?.startAfter;
+        const azkarDuration = parsedAutoNav.screens.azkar?.duration;
+        setAzkarSettings({
+          startAfter: (azkarStartAfter != null) ? String(azkarStartAfter) : '',
+          duration: (azkarDuration != null) ? String(azkarDuration) : ''
+        });
+        
+        const quranStartAfter = parsedAutoNav.screens.quran?.startAfter;
+        const quranDuration = parsedAutoNav.screens.quran?.duration;
+        setQuranSettings({
+          startAfter: (quranStartAfter != null) ? String(quranStartAfter) : '',
+          duration: (quranDuration != null) ? String(quranDuration) : ''
+        });
+        
+        const dailyWirdStartAfter = parsedAutoNav.screens.dailyWird?.startAfter;
+        const dailyWirdDuration = parsedAutoNav.screens.dailyWird?.duration;
+        const dailyWirdImages = parsedAutoNav.screens.dailyWird?.imagesCount;
+        const dailyWirdMinutes = parsedAutoNav.screens.dailyWird?.minutesPerImage;
+        setDailyWirdSettings({
+          startAfter: (dailyWirdStartAfter != null) ? String(dailyWirdStartAfter) : '',
+          duration: (dailyWirdDuration != null) ? String(dailyWirdDuration) : ''
+        });
+        setDailyWirdImagesCount((dailyWirdImages != null) ? String(dailyWirdImages) : '');
+        setDailyWirdMinutesPerImage((dailyWirdMinutes != null) ? String(dailyWirdMinutes) : '');
+        
+        const liveMakkahStartAfter = parsedAutoNav.screens.liveMakkah?.startAfter;
+        const liveMakkahDuration = parsedAutoNav.screens.liveMakkah?.duration;
+        setLiveStreamSettings({
+          startAfter: (liveMakkahStartAfter != null) ? String(liveMakkahStartAfter) : '',
+          duration: (liveMakkahDuration != null) ? String(liveMakkahDuration) : ''
+        });
+        
+        const liveMadinaStartAfter = parsedAutoNav.screens.liveMadina?.startAfter;
+        const liveMadinaDuration = parsedAutoNav.screens.liveMadina?.duration;
+        setLiveMadinaSettings({
+          startAfter: (liveMadinaStartAfter != null) ? String(liveMadinaStartAfter) : '',
+          duration: (liveMadinaDuration != null) ? String(liveMadinaDuration) : ''
+        });
+      }
+    }
+
+    // ✅ تحديث pre-prayer settings
+    if (settings.prePrayerSettings) {
+      const parsedPreAutoNav = settings.prePrayerSettings;
+      setPreAutoNavigationEnabled(parsedPreAutoNav.enabled || false);
+      
+      if (parsedPreAutoNav.screens) {
+        setPreAzkarEnabled(parsedPreAutoNav.screens.azkar?.enabled || false);
+        setPreQuranEnabled(parsedPreAutoNav.screens.quran?.enabled || false);
+        setPreDailyWirdEnabled(parsedPreAutoNav.screens.dailyWird?.enabled || false);
+        setPreLiveStreamEnabled(parsedPreAutoNav.screens.liveMakkah?.enabled || false);
+        setPreLiveMadinaEnabled(parsedPreAutoNav.screens.liveMadina?.enabled || false);
+        
+        const preAzkarStartBefore = parsedPreAutoNav.screens.azkar?.startBefore;
+        const preAzkarDuration = parsedPreAutoNav.screens.azkar?.duration;
+        setPreAzkarSettings({
+          startBefore: (preAzkarStartBefore != null) ? String(preAzkarStartBefore) : '',
+          duration: (preAzkarDuration != null) ? String(preAzkarDuration) : ''
+        });
+        
+        const preQuranStartBefore = parsedPreAutoNav.screens.quran?.startBefore;
+        const preQuranDuration = parsedPreAutoNav.screens.quran?.duration;
+        setPreQuranSettings({
+          startBefore: (preQuranStartBefore != null) ? String(preQuranStartBefore) : '',
+          duration: (preQuranDuration != null) ? String(preQuranDuration) : ''
+        });
+        
+        const preDailyWirdStartBefore = parsedPreAutoNav.screens.dailyWird?.startBefore;
+        const preDailyWirdDuration = parsedPreAutoNav.screens.dailyWird?.duration;
+        const preDailyWirdImages = parsedPreAutoNav.screens.dailyWird?.imagesCount;
+        const preDailyWirdMinutes = parsedPreAutoNav.screens.dailyWird?.minutesPerImage;
+        setPreDailyWirdSettings({
+          startBefore: (preDailyWirdStartBefore != null) ? String(preDailyWirdStartBefore) : '',
+          duration: (preDailyWirdDuration != null) ? String(preDailyWirdDuration) : ''
+        });
+        setPreDailyWirdImagesCount((preDailyWirdImages != null) ? String(preDailyWirdImages) : '');
+        setPreDailyWirdMinutesPerImage((preDailyWirdMinutes != null) ? String(preDailyWirdMinutes) : '');
+        
+        const preLiveMakkahStartBefore = parsedPreAutoNav.screens.liveMakkah?.startBefore;
+        const preLiveMakkahDuration = parsedPreAutoNav.screens.liveMakkah?.duration;
+        setPreLiveStreamSettings({
+          startBefore: (preLiveMakkahStartBefore != null) ? String(preLiveMakkahStartBefore) : '',
+          duration: (preLiveMakkahDuration != null) ? String(preLiveMakkahDuration) : ''
+        });
+        
+        const preLiveMadinaStartBefore = parsedPreAutoNav.screens.liveMadina?.startBefore;
+        const preLiveMadinaDuration = parsedPreAutoNav.screens.liveMadina?.duration;
+        setPreLiveMadinaSettings({
+          startBefore: (preLiveMadinaStartBefore != null) ? String(preLiveMadinaStartBefore) : '',
+          duration: (preLiveMadinaDuration != null) ? String(preLiveMadinaDuration) : ''
+        });
+      }
+    }
+    
+  } catch (error) {
+    console.log('Error loading settings:', error);
+    await resetCorruptedData();
+  }
+};
 
   const pickImage = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert('صلاحية مطلوبة', 'يحتاج التطبيق إلى صلاحية الوصول إلى الصور');
-    return;
-  }
+      if (status !== 'granted') {
+        Alert.alert('صلاحية مطلوبة', 'يحتاج التطبيق إلى صلاحية الوصول إلى الصور');
+        return;
+      }
+      
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: [ImagePicker.MediaType.IMAGE],
         allowsEditing: true,
         aspect: [16, 9],
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]) {
+      if (!result.canceled && result.assets && result.assets[0]) {
         const imageUri = result.assets[0].uri;
         setBackgroundImage(imageUri);
         setIsDefaultBackground(false);
@@ -896,7 +1264,7 @@ const updateLocationFromGPS = async () => {
       }
     } catch (error) {
       console.log('Error picking image:', error);
-      Alert.alert('❌ خطأ', 'حدث خطأ أثناء اختيار الصورة');
+      Alert.alert('❌ خطأ', 'حدث خطأ أثناء اختيار الصورة: ' + error.message);
     }
   };
 
@@ -963,6 +1331,7 @@ const updateLocationFromGPS = async () => {
         const activeScreens = [
           { type: 'azkar', enabled: azkarEnabled, startAfter: azkarSettings.startAfter, duration: azkarSettings.duration },
           { type: 'quran', enabled: quranEnabled, startAfter: quranSettings.startAfter, duration: quranSettings.duration },
+          { type: 'dailyWird', enabled: dailyWirdEnabled, startAfter: dailyWirdSettings.startAfter, duration: dailyWirdSettings.duration },
           { type: 'liveMakkah', enabled: liveStreamEnabled, startAfter: liveStreamSettings.startAfter, duration: liveStreamSettings.duration },
           { type: 'liveMadina', enabled: liveMadinaEnabled, startAfter: liveMadinaSettings.startAfter, duration: liveMadinaSettings.duration }
         ].filter(screen => 
@@ -1035,9 +1404,17 @@ const updateLocationFromGPS = async () => {
           Asr: blackScreenDurations.Asr || '0',
           Maghrib: blackScreenDurations.Maghrib || '0',
           Isha: blackScreenDurations.Isha || '0'
-        }
+        },
+        text: blackScreenText || ' '
       };
       await AsyncStorage.setItem('blackScreenSettings', JSON.stringify(blackScreenToSave));
+
+      // Save Friday (Jumuah) overrides
+      const fridaySettingsToSave = {
+        iqamaJumuah: fridayIqamaMinutes ? parseInt(fridayIqamaMinutes) : '',
+        blackScreenJumuah: fridayBlackScreenMinutes ? parseInt(fridayBlackScreenMinutes) : ''
+      };
+      await AsyncStorage.setItem('fridaySettings', JSON.stringify(fridaySettingsToSave));
 
       // Save auto navigation settings
       const autoNavToSave = {
@@ -1053,6 +1430,13 @@ const updateLocationFromGPS = async () => {
             startAfter: parseInt(quranSettings.startAfter) || 0,
             duration: parseInt(quranSettings.duration) || 0
           },
+          dailyWird: {
+            enabled: dailyWirdEnabled,
+            startAfter: parseInt(dailyWirdSettings.startAfter) || 0,
+            duration: parseInt(dailyWirdSettings.duration) || 0,
+            imagesCount: parseInt(dailyWirdImagesCount) || 3,
+            minutesPerImage: parseInt(dailyWirdMinutesPerImage) || 1
+          },
           liveMakkah: {
             enabled: liveStreamEnabled,
             startAfter: parseInt(liveStreamSettings.startAfter) || 0,
@@ -1066,6 +1450,41 @@ const updateLocationFromGPS = async () => {
         }
       };
       await AsyncStorage.setItem('postPrayerSettings', JSON.stringify(autoNavToSave));
+
+      // Save pre-prayer auto navigation settings
+      const preAutoNavToSave = {
+        enabled: preAutoNavigationEnabled,
+        screens: {
+          azkar: {
+            enabled: preAzkarEnabled,
+            startBefore: parseInt(preAzkarSettings.startBefore) || 0,
+            duration: parseInt(preAzkarSettings.duration) || 0
+          },
+          quran: {
+            enabled: preQuranEnabled,
+            startBefore: parseInt(preQuranSettings.startBefore) || 0,
+            duration: parseInt(preQuranSettings.duration) || 0
+          },
+          dailyWird: {
+            enabled: preDailyWirdEnabled,
+            startBefore: parseInt(preDailyWirdSettings.startBefore) || 0,
+            duration: parseInt(preDailyWirdSettings.duration) || 0,
+            imagesCount: parseInt(preDailyWirdImagesCount) || 3,
+            minutesPerImage: parseInt(preDailyWirdMinutesPerImage) || 1
+          },
+          liveMakkah: {
+            enabled: preLiveStreamEnabled,
+            startBefore: parseInt(preLiveStreamSettings.startBefore) || 0,
+            duration: parseInt(preLiveStreamSettings.duration) || 0
+          },
+          liveMadina: {
+            enabled: preLiveMadinaEnabled,
+            startBefore: parseInt(preLiveMadinaSettings.startBefore) || 0,
+            duration: parseInt(preLiveMadinaSettings.duration) || 0
+          }
+        }
+      };
+      await AsyncStorage.setItem('prePrayerSettings', JSON.stringify(preAutoNavToSave));
 
       // Background image settings are saved immediately when changed
       
@@ -1125,13 +1544,26 @@ const updateLocationFromGPS = async () => {
   };
 
   
+
+  
   
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-      <TouchableOpacity style={styles.menuButton}
-      focusable={true}
-      onPress={() => navigation.openDrawer()}>
+    <ScrollView 
+      contentContainerStyle={styles.container} 
+      keyboardShouldPersistTaps="handled" 
+      keyboardDismissMode="on-drag">
+      {/* TV Remote: Menu Button */}
+      <TouchableOpacity 
+  style={[
+    styles.menuButton,
+    isElementFocused('menuButton') && styles.tvFocused
+  ]}
+  focusable={Platform.OS === 'android'}
+  hasTVPreferredFocus={true}
+  onFocus={() => handleNewFocus('menuButton')}
+  onBlur={handleNewBlur}
+  onPress={() => navigation.openDrawer()}>
         <Ionicons name="menu" size={32} color="#000" />
       </TouchableOpacity>
 
@@ -1139,34 +1571,81 @@ const updateLocationFromGPS = async () => {
 
       <View style={styles.section}>
         <Text style={styles.label}>اسم المسجد</Text>
+        {/* TV Remote: Mosque Name Input */}
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            isElementFocused('mosqueNameInput') && styles.tvFocusedInput
+          ]}
           placeholder="اكتب اسم المسجد"
           value={mosqueName}
           onChangeText={setMosqueName}
           returnKeyType="done"
-          
+          focusable={Platform.OS === 'android'}
+          onFocus={() => handleNewFocus('mosqueNameInput')}
+          onBlur={handleNewBlur}
         />
       </View>
 
       <View style={styles.section}>
         <Text style={[styles.label, { marginBottom: 15 }]}>المدة بين الأذان والإقامة (بالدقائق)</Text>
+        {/* TV Remote: Iqama Times Row */}
         <View style={styles.prayersRow}>
-          {['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((prayer) => (
-            <View key={prayer} style={styles.prayerBox}>
-              <Text style={styles.prayerLabel}>{prayer}</Text>
-              <TextInput
-                style={styles.prayerInput}
-                placeholder="مثال: 10"
-                keyboardType="numeric"
-                value={iqamaTimes[prayer]}
-                onChangeText={(value) => handleIqamaChange(prayer, value)}
-                maxLength={4}
-                returnKeyType="done"
-              />
-            </View>
-          ))}
-        </View>
+  {/* قمنا بتعديل الـ map ليشمل الجمعة مباشرة */}
+  {['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((prayer, index) => (
+    <View
+      key={prayer}
+      style={[
+        styles.prayerBox,
+        isLandscape ? styles.prayerBoxLandscape : styles.prayerBoxPortrait
+      ]}>
+      <Text style={styles.prayerLabel}>{getPrayerNameInArabic(prayer)}</Text>
+      <TextInput
+        ref={el => iqamaInputRefs.current[index] = el} // 1. ربط الـ ref
+        style={styles.prayerInput}
+        placeholder="مثال: 10"
+        keyboardType="numeric"
+        value={iqamaTimes[prayer]}
+        onChangeText={(value) => handleIqamaChange(prayer, value)}
+        maxLength={4}
+        returnKeyType="done"
+        // 2. إضافة خصائص التنقل للريموت (فقط على Android)
+        {...(Platform.OS === 'android' && {
+          nextFocusLeft: findNodeHandle(iqamaInputRefs.current[index + 1]),
+          nextFocusRight: findNodeHandle(iqamaInputRefs.current[index - 1]),
+          nextFocusDown: findNodeHandle(iqamaInputRefs.current[index + numColumns]),
+          nextFocusUp: findNodeHandle(iqamaInputRefs.current[index - numColumns]),
+        })}
+      />
+    </View>
+  ))}
+
+  {/* حقل الجمعة منفصل للتعامل مع الـ state المختلف */}
+  <View style={[
+    styles.prayerBox,
+    isLandscape ? styles.prayerBoxLandscape : styles.prayerBoxPortrait
+  ]}>
+    <Text style={styles.prayerLabel}>الجمعة</Text>
+    <TextInput
+      ref={el => iqamaInputRefs.current[5] = el} // الاندكس 5 للجمعة
+      style={styles.prayerInput}
+      placeholder="مثال: 15"
+      keyboardType="numeric"
+      value={fridayIqamaMinutes}
+      onChangeText={setFridayIqamaMinutes}
+      maxLength={4}
+      returnKeyType="done"
+      {...(Platform.OS === 'android' && {
+        nextFocusLeft: findNodeHandle(iqamaInputRefs.current[6]), // لا يوجد عنصر تالٍ
+        nextFocusRight: findNodeHandle(iqamaInputRefs.current[4]), // العنصر السابق هو العشاء
+        nextFocusDown: findNodeHandle(iqamaInputRefs.current[5 + numColumns]),
+        nextFocusUp: findNodeHandle(iqamaInputRefs.current[5 - numColumns]),
+      })}
+    />
+  </View>
+</View>
+
+        
       </View>
 
       <View style={styles.section}>
@@ -1178,100 +1657,94 @@ const updateLocationFromGPS = async () => {
             value={blackScreenEnabled}
             onValueChange={setBlackScreenEnabled}
             thumbColor={blackScreenEnabled ? '#28a745' : '#f44336'}
+            focusable={Platform.OS === 'android'}
           />
         </View>
 
         {blackScreenEnabled && (
-          <>
-            <Text style={[styles.label, { marginBottom: 15, fontSize: 16, color: '#666' }]}>
-              مدة عرض الشاشة السوداء بعد الإقامة (بالدقائق)
-            </Text>
-            <View style={styles.prayersRow}>
-              {['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((prayer) => (
-                <View key={prayer + 'BlackScreen'} style={styles.prayerBox}>
-                  <Text style={styles.prayerLabel}>{prayer}</Text>
-                  <TextInput
-                    style={styles.prayerInput}
-                    placeholder="مثال: 5"
-                    keyboardType="numeric"
-                    value={blackScreenDurations[prayer]}
-                    onChangeText={(value) => handleBlackScreenDurationChange(prayer, value)}
-                    maxLength={2}
-                    returnKeyType="done"
-                  />
-                </View>
-              ))}
-            </View>
-          </>
-        )}
-      </View>
-
-      <View style={styles.section}>
-  <Text style={styles.label}>شريط الأخبار</Text>
-  
-  <View style={styles.switchContainer}>
-    <Text style={styles.switchLabel}>تفعيل شريط الأخبار</Text>
-    <Switch
-      value={newsEnabled}
-      onValueChange={setNewsEnabled}
-      thumbColor={newsEnabled ? '#28a745' : '#f44336'}
-      trackColor={{ false: '#d3d3d3', true: '#90ee90' }}
-    />
-  </View>
-
-        {newsEnabled && (
+  <>
+    <Text style={[styles.label, { marginBottom: 15, fontSize: 16, color: '#666' }]}>
+      مدة عرض الشاشة السوداء بعد الإقامة (بالدقائق)
+    </Text>
+    <View style={styles.prayersRow}>
+      {/* 1. تعديل الـ map ليشمل index */}
+      {['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((prayer, index) => (
+        <View 
+          key={prayer + 'BlackScreen'} 
+          style={[
+            styles.prayerBox,
+            isLandscape ? styles.prayerBoxLandscape : styles.prayerBoxPortrait
+          ]}>
+          <Text style={styles.prayerLabel}>{getPrayerNameInArabic(prayer)}</Text>
           <TextInput
-          style={styles.newsInput}
-          placeholder="اكتب نص الأخبار هنا... يمكنك استخدام • للفصل بين الأخبار"
-          placeholderTextColor="#999"
-          value={newsText}
-          onChangeText={setNewsText}
-          multiline
-          textAlignVertical="top"
-          maxLength={1000}
-          returnKeyType="done"
-          blurOnSubmit={true}
-        />
-        )}
-      </View>
-
-      {/* Background Image Section */}
-      <View style={styles.section}>
-        <Text style={styles.label}>صورة الخلفية</Text>
-        
-        {backgroundImage && !isDefaultBackground && (
-          <View style={styles.backgroundPreview}>
-            <Image source={{ uri: backgroundImage }} style={styles.previewImage} />
-            <Text style={styles.previewText}>معاينة الخلفية الحالية</Text>
-          </View>
-        )}
-
-        <View style={styles.backgroundButtonsContainer}>
-          <TouchableOpacity style={styles.backgroundButton}
-          focusable={true}
-          onPress={pickImage}>
-            <Ionicons name="image-outline" size={20} color="#fff" />
-            <Text style={styles.backgroundButtonText}>اختر صورة جديدة</Text>
-          </TouchableOpacity>
-
-          {!isDefaultBackground && (
-            <TouchableOpacity 
-              style={[styles.backgroundButton, styles.resetButton]} 
-              focusable={true}
-              onPress={resetToDefaultBackground}
-            >
-              <Ionicons name="refresh-outline" size={20} color="#fff" />
-              <Text style={styles.backgroundButtonText}>استعادة الأصلية</Text>
-            </TouchableOpacity>
-          )}
+            // 2. ربط الـ ref
+            ref={el => blackScreenInputRefs.current[index] = el}
+            style={styles.prayerInput}
+            placeholder="مثال: 5"
+            keyboardType="numeric"
+            value={blackScreenDurations[prayer]}
+            onChangeText={(value) => handleBlackScreenDurationChange(prayer, value)}
+            maxLength={2}
+            returnKeyType="done"
+            // 3. إضافة خصائص التنقل للريموت
+            {...(Platform.OS === 'android' && {
+              nextFocusLeft: findNodeHandle(blackScreenInputRefs.current[index + 1]),
+              nextFocusRight: findNodeHandle(blackScreenInputRefs.current[index - 1]),
+              nextFocusDown: findNodeHandle(blackScreenInputRefs.current[index + numColumns]),
+              nextFocusUp: findNodeHandle(blackScreenInputRefs.current[index - numColumns]),
+            })}
+          />
         </View>
-
-        <Text style={styles.backgroundHint}>
-          يمكنك اختيار صورة مخصصة للخلفية أو استعادة الخلفية الأصلية
-        </Text>
+      ))}
+      
+      {/* حقل الجمعة للشاشة السوداء */}
+      <View style={[
+        styles.prayerBox,
+        isLandscape ? styles.prayerBoxLandscape : styles.prayerBoxPortrait
+      ]}>
+        <Text style={styles.prayerLabel}>الجمعة</Text>
+        <TextInput
+          // 2. ربط الـ ref للجمعة (index = 5)
+          ref={el => blackScreenInputRefs.current[5] = el}
+          style={styles.prayerInput}
+          placeholder="مثال: 5"
+          keyboardType="numeric"
+          value={fridayBlackScreenMinutes}
+          onChangeText={setFridayBlackScreenMinutes}
+          maxLength={2}
+          returnKeyType="done"
+          // 3. إضافة خصائص التنقل للريموت للجمعة
+          {...(Platform.OS === 'android' && {
+            nextFocusLeft: findNodeHandle(blackScreenInputRefs.current[6]), // لا يوجد عنصر تالٍ
+            nextFocusRight: findNodeHandle(blackScreenInputRefs.current[4]), // العنصر السابق هو العشاء
+            nextFocusDown: findNodeHandle(blackScreenInputRefs.current[5 + numColumns]),
+            nextFocusUp: findNodeHandle(blackScreenInputRefs.current[5 - numColumns]),
+          })}
+        />
+      </View>
+    </View>
+  </>
+)}
       </View>
 
-      
+      {blackScreenEnabled && (
+        <>
+          <Text style={[styles.label, { marginBottom: 10, fontSize: 16, color: '#666' }]}>
+            النص المعروض على الشاشة السوداء
+          </Text>
+          <TextInput
+            style={[styles.input, { marginBottom: 20 }]}
+            placeholder="مثال: وقت الصلاة"
+            placeholderTextColor="#999"
+            value={blackScreenText}
+            onChangeText={setBlackScreenText}
+            maxLength={50}
+            returnKeyType="done"
+          />
+        </>
+      )}
+
+            
       <View style={styles.section}>
         <Text style={styles.label}>التنقل التلقائي بعد الصلاة</Text>
         
@@ -1281,6 +1754,7 @@ const updateLocationFromGPS = async () => {
             value={autoNavigationEnabled}
             onValueChange={setAutoNavigationEnabled}
             thumbColor={autoNavigationEnabled ? '#28a745' : '#f44336'}
+            focusable={Platform.OS === 'android'}
           />
         </View>
 
@@ -1288,14 +1762,28 @@ const updateLocationFromGPS = async () => {
           <>
             {/* Azkar Section */}
             <View style={styles.subSection}>
-              <View style={styles.switchContainer}>
-                <Text style={styles.subSwitchLabel}>صفحه الأذكار</Text>
-                <Switch
-                  value={azkarEnabled}
-                  onValueChange={(enabled) => handleScreenToggle('azkar', enabled)}
-                  thumbColor={azkarEnabled ? '#28a745' : '#f44336'}
-                />
-              </View>
+  <View style={styles.switchContainer}>
+    <Text style={styles.subSwitchLabel}>صفحه الأذكار</Text>
+    
+    <TouchableOpacity
+      style={[
+        styles.switchWrapper,
+        isElementFocused('azkarSwitch') && styles.tvFocusedSwitch
+      ]}
+      focusable={Platform.OS === 'android'}
+      onFocus={() => handleNewFocus('azkarSwitch')}
+      onBlur={handleNewBlur}
+      onPress={() => handleScreenToggle('azkar', !azkarEnabled)}
+      activeOpacity={0.8}
+    >
+      <Switch
+        value={azkarEnabled}
+        onValueChange={(enabled) => handleScreenToggle('azkar', enabled)}
+        thumbColor={azkarEnabled ? '#28a745' : '#f44336'}
+        pointerEvents="none"
+      />
+    </TouchableOpacity>
+  </View>
               
               {azkarEnabled && (
                 <View style={styles.inputsRow}>
@@ -1338,13 +1826,14 @@ const updateLocationFromGPS = async () => {
             </View>
 
             {/* Quran Section */}
-            <View style={styles.subSection}>
+            {/* <View style={styles.subSection}>
               <View style={styles.switchContainer}>
                 <Text style={styles.subSwitchLabel}>صفحه القرءان</Text>
                 <Switch
                   value={quranEnabled}
                   onValueChange={(enabled) => handleScreenToggle('quran', enabled)}
                   thumbColor={quranEnabled ? '#28a745' : '#f44336'}
+                  focusable={Platform.OS === 'android'}
                 />
               </View>
               
@@ -1386,17 +1875,133 @@ const updateLocationFromGPS = async () => {
                   </View>
                 </View>
               )}
+            </View> */}
+
+            {/* Daily Wird Section */}
+            <View style={styles.subSection}>
+              <View style={styles.switchContainer}>
+                <Text style={styles.subSwitchLabel}>صفحه الورد اليومي</Text>
+                <TouchableOpacity
+    style={[
+      styles.switchWrapper,
+      isElementFocused('dailyWirdSwitch') && styles.tvFocusedSwitch
+    ]}
+    focusable={Platform.OS === 'android'}
+    onFocus={() => handleNewFocus('dailyWirdSwitch')}
+    onBlur={handleNewBlur}
+    onPress={() => handleScreenToggle('dailyWird', !dailyWirdEnabled)}
+    activeOpacity={0.8}
+  >
+    <Switch
+      value={dailyWirdEnabled}
+      onValueChange={(enabled) => handleScreenToggle('dailyWird', enabled)}
+      thumbColor={dailyWirdEnabled ? '#28a745' : '#f44336'}
+      pointerEvents="none"
+    />
+  </TouchableOpacity>
+              </View>
+
+              {dailyWirdEnabled && (
+                <>
+                  <View style={styles.inputsRow}>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>المده بعد الشاشه السوداء</Text>
+                      <TextInput
+                        style={[
+                          styles.smallInput,
+                          conflictErrors.dailyWird.startAfter && { borderColor: '#dc3545', borderWidth: 2 }
+                        ]}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        value={dailyWirdSettings.startAfter}
+                        onChangeText={(value) => handleDailyWirdSettingsChange('startAfter', value)}
+                        maxLength={2}
+                      />
+                      {conflictErrors.dailyWird.startAfter && (
+                        <Text style={styles.errorText}>{conflictErrors.dailyWird.message}</Text>
+                      )}
+                    </View>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>المدة</Text>
+                      <TextInput
+                        style={[
+                          styles.smallInput,
+                          conflictErrors.dailyWird.duration && { borderColor: '#dc3545', borderWidth: 2 ,}
+                        ]}
+                        placeholder="1"
+                        keyboardType="numeric"
+                        value={dailyWirdSettings.duration}
+                        editable={false}
+                        selectTextOnFocus={false}
+                        maxLength={2}
+                      />
+                      {conflictErrors.dailyWird.duration && (
+                        <Text style={styles.errorText}>{conflictErrors.dailyWird.message}</Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Page flip settings for Daily Wird */}
+                  <View style={[styles.inputsRow, { marginTop: 10 }]}>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>عدد الصور</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="مثال: 3"
+                        keyboardType="numeric"
+                        value={dailyWirdImagesCount}
+                        onChangeText={setDailyWirdImagesCount}
+                        maxLength={2}
+                      />
+                    </View>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>دقيقه لكل صورة</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="مثال: 1"
+                        keyboardType="numeric"
+                        value={dailyWirdMinutesPerImage}
+                        onChangeText={setDailyWirdMinutesPerImage}
+                        maxLength={2}
+                      />
+                    </View>
+                  </View>
+
+                  {/* زر إعادة بدء الورد من الصفحة الأولى */}
+                  <TouchableOpacity
+                    style={styles.restartWirdButton}
+                    onPress={handleRestartDailyWird}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="refresh" size={20} color="white" />
+                    <Text style={styles.restartWirdButtonText}>بدء الورد من الصفحة الأولى</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             {/* Live Stream Section */}
             <View style={styles.subSection}>
               <View style={styles.switchContainer}>
                 <Text style={styles.subSwitchLabel}>صفحه البث المباشر من مكة</Text>
-                <Switch
-                  value={liveStreamEnabled}
-                  onValueChange={(enabled) => handleScreenToggle('liveMakkah', enabled)}
-                  thumbColor={liveStreamEnabled ? '#28a745' : '#f44336'}
-                />
+                <TouchableOpacity
+    style={[
+      styles.switchWrapper,
+      isElementFocused('liveStreamSwitch') && styles.tvFocusedSwitch
+    ]}
+    focusable={Platform.OS === 'android'}
+    onFocus={() => handleNewFocus('liveStreamSwitch')}
+    onBlur={handleNewBlur}
+    onPress={() => handleScreenToggle('liveMakkah', !liveStreamEnabled)}
+    activeOpacity={0.8}
+  >
+    <Switch
+      value={liveStreamEnabled}
+      onValueChange={(enabled) => handleScreenToggle('liveMakkah', enabled)}
+      thumbColor={liveStreamEnabled ? '#28a745' : '#f44336'}
+      pointerEvents="none"
+    />
+  </TouchableOpacity>
               </View>
               
               {liveStreamEnabled && (
@@ -1443,11 +2048,24 @@ const updateLocationFromGPS = async () => {
             <View style={styles.subSection}>
               <View style={styles.switchContainer}>
                 <Text style={styles.subSwitchLabel}>صفحه المدينة المنورة المباشرة</Text>
-                <Switch
-                  value={liveMadinaEnabled}
-                  onValueChange={(enabled) => handleScreenToggle('liveMadina', enabled)}
-                  thumbColor={liveMadinaEnabled ? '#28a745' : '#f44336'}
-                />
+                <TouchableOpacity
+    style={[
+      styles.switchWrapper,
+      isElementFocused('liveMadinaSwitch') && styles.tvFocusedSwitch
+    ]}
+    focusable={Platform.OS === 'android'}
+    onFocus={() => handleNewFocus('liveMadinaSwitch')}
+    onBlur={handleNewBlur}
+    onPress={() => handleScreenToggle('liveMadina', !liveMadinaEnabled)}
+    activeOpacity={0.8}
+  >
+    <Switch
+      value={liveMadinaEnabled}
+      onValueChange={(enabled) => handleScreenToggle('liveMadina', enabled)}
+      thumbColor={liveMadinaEnabled ? '#28a745' : '#f44336'}
+      pointerEvents="none"
+    />
+  </TouchableOpacity>
               </View>
               
               {liveMadinaEnabled && (
@@ -1493,16 +2111,398 @@ const updateLocationFromGPS = async () => {
         )}
       </View>
 
+      {/* ============ Pre-Prayer Auto Navigation Section (قبل الصلاة) ============ */}
+      <View style={styles.section}>
+        <Text style={styles.label}>التنقل التلقائي قبل الصلاة</Text>
+        
+        <View style={styles.switchContainer}>
+          <Text style={styles.switchLabel}>تفعيل التنقل التلقائي قبل الأذان</Text>
+          <Switch
+            value={preAutoNavigationEnabled}
+            onValueChange={setPreAutoNavigationEnabled}
+            thumbColor={preAutoNavigationEnabled ? '#28a745' : '#f44336'}
+            focusable={Platform.OS === 'android'}
+          />
+        </View>
+
+        {preAutoNavigationEnabled && (
+          <>
+            {/* Azkar Section */}
+            <View style={styles.subSection}>
+              <View style={styles.switchContainer}>
+                <Text style={styles.subSwitchLabel}>صفحه الأذكار</Text>
+                <TouchableOpacity
+  style={[
+    styles.switchWrapper,
+    isElementFocused('preAzkarSwitch') && styles.tvFocusedSwitch
+  ]}
+  focusable={Platform.OS === 'android'}
+  onFocus={() => handleNewFocus('preAzkarSwitch')}
+  onBlur={handleNewBlur}
+  onPress={() => handlePreScreenToggle('azkar', !preAzkarEnabled)}
+  activeOpacity={0.8}
+>
+  <Switch
+    value={preAzkarEnabled}
+    onValueChange={(enabled) => handlePreScreenToggle('azkar', enabled)}
+    thumbColor={preAzkarEnabled ? '#28a745' : '#f44336'}
+    pointerEvents="none"
+  />
+</TouchableOpacity>
+              </View>
+              
+              {preAzkarEnabled && (
+                <View style={styles.inputsRow}>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>البدء قبل الأذان بـ</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 30"
+                      keyboardType="numeric"
+                      value={preAzkarSettings.startBefore}
+                      onChangeText={(value) => handlePreAzkarSettingsChange('startBefore', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>المدة</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 10"
+                      keyboardType="numeric"
+                      value={preAzkarSettings.duration}
+                      onChangeText={(value) => handlePreAzkarSettingsChange('duration', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Quran Section */}
+            {/* <View style={styles.subSection}>
+              <View style={styles.switchContainer}>
+                <Text style={styles.subSwitchLabel}>صفحه القرءان</Text>
+                <Switch
+                  value={preQuranEnabled}
+                  onValueChange={(enabled) => handlePreScreenToggle('quran', enabled)}
+                  thumbColor={preQuranEnabled ? '#28a745' : '#f44336'}
+                  focusable={Platform.OS === 'android'}
+                />
+              </View>
+              
+              {preQuranEnabled && (
+                <View style={styles.inputsRow}>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>البدء قبل الأذان بـ</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 20"
+                      keyboardType="numeric"
+                      value={preQuranSettings.startBefore}
+                      onChangeText={(value) => handlePreQuranSettingsChange('startBefore', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>المدة</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 15"
+                      keyboardType="numeric"
+                      value={preQuranSettings.duration}
+                      onChangeText={(value) => handlePreQuranSettingsChange('duration', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
+              )}
+            </View> */}
+
+            {/* Daily Wird Section */}
+            <View style={styles.subSection}>
+              <View style={styles.switchContainer}>
+                <Text style={styles.subSwitchLabel}>صفحه الورد اليومي</Text>
+                <TouchableOpacity
+  style={[
+    styles.switchWrapper,
+    isElementFocused('preDailyWirdSwitch') && styles.tvFocusedSwitch
+  ]}
+  focusable={Platform.OS === 'android'}
+  onFocus={() => handleNewFocus('preDailyWirdSwitch')}
+  onBlur={handleNewBlur}
+  onPress={() => handlePreScreenToggle('dailyWird', !preDailyWirdEnabled)}
+  activeOpacity={0.8}
+>
+  <Switch
+    value={preDailyWirdEnabled}
+    onValueChange={(enabled) => handlePreScreenToggle('dailyWird', enabled)}
+    thumbColor={preDailyWirdEnabled ? '#28a745' : '#f44336'}
+    pointerEvents="none"
+  />
+</TouchableOpacity>
+              </View>
+
+              {preDailyWirdEnabled && (
+                <>
+                  <View style={styles.inputsRow}>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>البدء قبل الأذان بـ</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="مثال: 15"
+                        keyboardType="numeric"
+                        value={preDailyWirdSettings.startBefore}
+                        onChangeText={(value) => handlePreDailyWirdSettingsChange('startBefore', value)}
+                        maxLength={2}
+                      />
+                    </View>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>المدة</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="محسوبة تلقائياً"
+                        keyboardType="numeric"
+                        value={preDailyWirdSettings.duration}
+                        editable={false}
+                        selectTextOnFocus={false}
+                        maxLength={2}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Page flip settings for Daily Wird */}
+                  <View style={[styles.inputsRow, { marginTop: 10 }]}>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>عدد الصور</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="مثال: 3"
+                        keyboardType="numeric"
+                        value={preDailyWirdImagesCount}
+                        onChangeText={setPreDailyWirdImagesCount}
+                        maxLength={2}
+                      />
+                    </View>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>دقيقه لكل صورة</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        placeholder="مثال: 1"
+                        keyboardType="numeric"
+                        value={preDailyWirdMinutesPerImage}
+                        onChangeText={setPreDailyWirdMinutesPerImage}
+                        maxLength={2}
+                      />
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+
+            {/* Live Makkah Section */}
+            <View style={styles.subSection}>
+              <View style={styles.switchContainer}>
+                <Text style={styles.subSwitchLabel}>صفحه البث المباشر من مكة</Text>
+                <TouchableOpacity
+  style={[
+    styles.switchWrapper,
+    isElementFocused('preLiveStreamSwitch') && styles.tvFocusedSwitch
+  ]}
+  focusable={Platform.OS === 'android'}
+  onFocus={() => handleNewFocus('preLiveStreamSwitch')}
+  onBlur={handleNewBlur}
+  onPress={() => handlePreScreenToggle('liveMakkah', !preLiveStreamEnabled)}
+  activeOpacity={0.8}
+>
+  <Switch
+    value={preLiveStreamEnabled}
+    onValueChange={(enabled) => handlePreScreenToggle('liveMakkah', enabled)}
+    thumbColor={preLiveStreamEnabled ? '#28a745' : '#f44336'}
+    pointerEvents="none"
+  />
+</TouchableOpacity>
+              </View>
+              
+              {preLiveStreamEnabled && (
+                <View style={styles.inputsRow}>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>البدء قبل الأذان بـ</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 10"
+                      keyboardType="numeric"
+                      value={preLiveStreamSettings.startBefore}
+                      onChangeText={(value) => handlePreLiveStreamSettingsChange('startBefore', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>المدة</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 5"
+                      keyboardType="numeric"
+                      value={preLiveStreamSettings.duration}
+                      onChangeText={(value) => handlePreLiveStreamSettingsChange('duration', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Madina Live Stream Section */}
+            <View style={styles.subSection}>
+              <View style={styles.switchContainer}>
+                <Text style={styles.subSwitchLabel}>صفحه المدينة المنورة المباشرة</Text>
+                <TouchableOpacity
+  style={[
+    styles.switchWrapper,
+    isElementFocused('preLiveMadinaSwitch') && styles.tvFocusedSwitch
+  ]}
+  focusable={Platform.OS === 'android'}
+  onFocus={() => handleNewFocus('preLiveMadinaSwitch')}
+  onBlur={handleNewBlur}
+  onPress={() => handlePreScreenToggle('liveMadina', !preLiveMadinaEnabled)}
+  activeOpacity={0.8}
+>
+  <Switch
+    value={preLiveMadinaEnabled}
+    onValueChange={(enabled) => handlePreScreenToggle('liveMadina', enabled)}
+    thumbColor={preLiveMadinaEnabled ? '#28a745' : '#f44336'}
+    pointerEvents="none"
+  />
+</TouchableOpacity>
+              </View>
+              
+              {preLiveMadinaEnabled && (
+                <View style={styles.inputsRow}>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>البدء قبل الأذان بـ</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 10"
+                      keyboardType="numeric"
+                      value={preLiveMadinaSettings.startBefore}
+                      onChangeText={(value) => handlePreLiveMadinaSettingsChange('startBefore', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>المدة</Text>
+                    <TextInput
+                      style={styles.smallInput}
+                      placeholder="مثال: 5"
+                      keyboardType="numeric"
+                      value={preLiveMadinaSettings.duration}
+                      onChangeText={(value) => handlePreLiveMadinaSettingsChange('duration', value)}
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+          </>
+        )}
+      </View>
+
+      <View style={styles.section}>
+  <Text style={styles.label}>شريط الأخبار</Text>
+  
+  <View style={styles.switchContainer}>
+    <Text style={styles.switchLabel}>تفعيل شريط الأخبار</Text>
+    <Switch
+      value={newsEnabled}
+      onValueChange={setNewsEnabled}
+      thumbColor={newsEnabled ? '#28a745' : '#f44336'}
+      trackColor={{ false: '#d3d3d3', true: '#90ee90' }}
+      focusable={Platform.OS === 'android'}
+    />
+  </View>
+
+        {newsEnabled && (
+          <TextInput
+          style={styles.newsInput}
+          placeholder="اكتب نص الأخبار هنا... يمكنك استخدام • للفصل بين الأخبار"
+          placeholderTextColor="#999"
+          value={newsText}
+          onChangeText={setNewsText}
+          multiline
+          textAlignVertical="top"
+          maxLength={1000}
+          returnKeyType="done"
+          blurOnSubmit={true}
+        />
+        )}
+      </View>
+
+      {/* Background Image Section */}
+      <View style={styles.section}>
+        <Text style={styles.label}>صورة الخلفية</Text>
+        
+        {backgroundImage && !isDefaultBackground && (
+          <View style={styles.backgroundPreview}>
+            <Image source={{ uri: backgroundImage }} style={styles.previewImage} />
+            <Text style={styles.previewText}>معاينة الخلفية الحالية</Text>
+          </View>
+        )}
+
+        <View style={styles.backgroundButtonsContainer}>
+          {/* TV Remote: Pick Image Button */}
+          <TouchableOpacity 
+            style={[
+              styles.backgroundButton,
+              isElementFocused('pickImage') && styles.tvFocusedButton
+            ]}
+            focusable={Platform.OS === 'android'}
+            onFocus={() => handleNewFocus('pickImage')}
+            onBlur={handleNewBlur}
+            onPress={pickImage}>
+            <Ionicons name="image-outline" size={20} color="#fff" />
+            <Text style={styles.backgroundButtonText}>اختر صورة جديدة</Text>
+          </TouchableOpacity>
+
+          {/* TV Remote: Reset Background Button */}
+          {!isDefaultBackground && (
+            <TouchableOpacity 
+              style={[
+                styles.backgroundButton, 
+                styles.resetButton,
+                isElementFocused('resetImage') && styles.tvFocusedButton
+              ]} 
+              focusable={Platform.OS === 'android'}
+              onFocus={() => handleNewFocus('resetImage')}
+              onBlur={handleNewBlur}
+              onPress={resetToDefaultBackground}
+            >
+              <Ionicons name="refresh-outline" size={20} color="#fff" />
+              <Text style={styles.backgroundButtonText}>استعادة الأصلية</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <Text style={styles.backgroundHint}>
+          يمكنك اختيار صورة مخصصة للخلفية أو استعادة الخلفية الأصلية
+        </Text>
+      </View>
+
+      
+
       <View style={styles.section}>
         <Text style={styles.label}>اتجاه الشاشة</Text>
         
         <View style={styles.orientationContainer}>
+          {/* TV Remote: Landscape Orientation Button */}
           <TouchableOpacity
             style={[
               styles.orientationButton,
-              orientation === 'landscape' && styles.orientationButtonSelected
+              orientation === 'landscape' && styles.orientationButtonSelected,
+              isElementFocused('orientLandscape') && styles.tvFocusedButton
             ]}
-            focusable={true}
+            focusable={Platform.OS === 'android'}
+            onFocus={() => handleNewFocus('orientLandscape')}
+            onBlur={handleNewBlur}
             onPress={() => handleOrientationChange('landscape')}
           >
             <Ionicons 
@@ -1518,12 +2518,16 @@ const updateLocationFromGPS = async () => {
             </Text>
           </TouchableOpacity>
 
+          {/* TV Remote: Portrait Orientation Button */}
           <TouchableOpacity
             style={[
               styles.orientationButton,
-              orientation === 'portrait' && styles.orientationButtonSelected
+              orientation === 'portrait' && styles.orientationButtonSelected,
+              isElementFocused('orientPortrait') && styles.tvFocusedButton
             ]}
-            focusable={true}
+            focusable={Platform.OS === 'android'}
+            onFocus={() => handleNewFocus('orientPortrait')}
+            onBlur={handleNewBlur}
             onPress={() => handleOrientationChange('portrait')}
           >
             <Ionicons 
@@ -1565,19 +2569,19 @@ const updateLocationFromGPS = async () => {
   )}
 
   <View style={styles.locationMethodContainer}>
-    <TouchableOpacity
+    {/* <TouchableOpacity
       style={[styles.methodButton, locationMethod === 'gps' && styles.activeMethodButton]}
-      focusable={true}
+      focusable={Platform.OS === 'android'}
       onPress={() => setLocationMethod('gps')}
     >
       <Text style={[styles.methodButtonText, locationMethod === 'gps' && styles.activeMethodButtonText]}>
         استخدام GPS
       </Text>
-    </TouchableOpacity>
+    </TouchableOpacity> */}
     
     <TouchableOpacity
       style={[styles.methodButton, locationMethod === 'cities' && styles.activeMethodButton]}
-      focusable={true}
+      focusable={Platform.OS === 'android'}
       onPress={() => setLocationMethod('cities')}
     >
       <Text style={[styles.methodButtonText, locationMethod === 'cities' && styles.activeMethodButtonText]}>
@@ -1587,7 +2591,7 @@ const updateLocationFromGPS = async () => {
     
     <TouchableOpacity
       style={[styles.methodButton, locationMethod === 'manual' && styles.activeMethodButton]}
-      focusable={true}
+      focusable={Platform.OS === 'android'}
       onPress={() => setLocationMethod('manual')}
     >
       <Text style={[styles.methodButtonText, locationMethod === 'manual' && styles.activeMethodButtonText]}>
@@ -1598,7 +2602,16 @@ const updateLocationFromGPS = async () => {
 
   {locationMethod === 'gps' && (
     <View style={styles.gpsContainer}>
-      <TouchableOpacity style={styles.updateLocationButton} focusable={true} onPress={updateLocationFromGPS}>
+      {/* TV Remote: GPS Update Button */}
+      <TouchableOpacity 
+        style={[
+          styles.updateLocationButton,
+          isElementFocused('gpsButton') && styles.tvFocusedButton
+        ]} 
+        focusable={Platform.OS === 'android'}
+        onFocus={() => handleNewFocus('gpsButton')}
+        onBlur={handleNewBlur}
+        onPress={updateLocationFromGPS}>
       
         <Ionicons name="navigate-circle-outline" size={20} color="#fff" />
         <Text style={styles.updateLocationButtonText}>تحديد الموقع من GPS</Text>
@@ -1609,19 +2622,33 @@ const updateLocationFromGPS = async () => {
 
   {locationMethod === 'cities' && (
     <View style={styles.citySelectionContainer}>
-      <TouchableOpacity style={styles.selectButton}
-      focusable={true}
-      onPress={() => setShowCountryPicker(true)}>
+      {/* TV Remote: Select Country Button */}
+      <TouchableOpacity 
+        style={[
+          styles.selectButton,
+          isElementFocused('selectCountry') && styles.tvFocusedSelect
+        ]}
+        focusable={Platform.OS === 'android'}
+        onFocus={() => handleNewFocus('selectCountry')}
+        onBlur={handleNewBlur}
+        onPress={() => setShowCountryPicker(true)}>
         <Text style={styles.selectButtonText}>
           {selectedCountry ? `البلد: ${selectedCountry}` : 'اختيار البلد'}
         </Text>
         <Ionicons name="chevron-down" size={20} color="#666" />
       </TouchableOpacity>
       
+      {/* TV Remote: Select City Button */}
       {selectedCountry && (
-        <TouchableOpacity style={styles.selectButton}
-        focusable={true}
-        onPress={() => setShowCityPicker(true)}>
+        <TouchableOpacity 
+          style={[
+            styles.selectButton,
+            isElementFocused('selectCity') && styles.tvFocusedSelect
+          ]}
+          focusable={Platform.OS === 'android'}
+          onFocus={() => handleNewFocus('selectCity')}
+          onBlur={handleNewBlur}
+          onPress={() => setShowCityPicker(true)}>
           <Text style={styles.selectButtonText}>
             {selectedCity && selectedCity.country === selectedCountry 
               ? `المدينة: ${selectedCity.name}` 
@@ -1662,7 +2689,7 @@ const updateLocationFromGPS = async () => {
       </View>
       
       <TouchableOpacity style={styles.saveCoordinatesButton} 
-      focusable={true}
+      focusable={Platform.OS === 'android'}
       onPress={saveManualCoordinates}>
         <Text style={styles.saveCoordinatesButtonText}>حفظ الإحداثيات</Text>
       </TouchableOpacity>
@@ -1675,7 +2702,7 @@ const updateLocationFromGPS = async () => {
     <View style={styles.modalContent}>
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle}>اختيار البلد</Text>
-        <TouchableOpacity focusable={true} onPress={() => setShowCountryPicker(false)}>
+        <TouchableOpacity focusable={Platform.OS === 'android'} onPress={() => setShowCountryPicker(false)}>
           <Ionicons name="close" size={24} color="#666" />
         </TouchableOpacity>
       </View>
@@ -1684,7 +2711,7 @@ const updateLocationFromGPS = async () => {
         data={Object.keys(COUNTRIES_CITIES)}
         keyExtractor={(item) => item}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.countryItem} focusable={true} onPress={() => selectCountry(item)}>
+          <TouchableOpacity style={styles.countryItem} focusable={Platform.OS === 'android'} onPress={() => selectCountry(item)}>
             <Text style={styles.countryItemText}>{item}</Text>
             <Ionicons name="chevron-forward" size={20} color="#666" />
           </TouchableOpacity>
@@ -1700,7 +2727,7 @@ const updateLocationFromGPS = async () => {
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle}>اختيار المدينة - {selectedCountry}</Text>
         <TouchableOpacity 
-        focusable={true}
+        focusable={Platform.OS === 'android'}
         onPress={() => setShowCityPicker(false)}>
           <Ionicons name="close" size={24} color="#666" />
         </TouchableOpacity>
@@ -1711,7 +2738,7 @@ const updateLocationFromGPS = async () => {
         keyExtractor={(item) => item.name}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.cityItemModal}
-          focusable={true}
+          focusable={Platform.OS === 'android'}
            onPress={() => selectCityFromCountry(item)}>
             <Text style={styles.cityItemText}>{item.name}</Text>
             <Ionicons name="chevron-forward" size={20} color="#666" />
@@ -1722,13 +2749,29 @@ const updateLocationFromGPS = async () => {
   </View>
 </Modal>
 
-      <TouchableOpacity style={styles.saveButton}
-      focusable={true}
-      onPress={saveSettings}>
+      {/* TV Remote: Save Button */}
+      <TouchableOpacity 
+        style={[
+          styles.saveButton,
+          isElementFocused('saveButton') && styles.tvFocusedButton
+        ]}
+        focusable={Platform.OS === 'android'}
+        onFocus={() => handleNewFocus('saveButton')}
+        onBlur={handleNewBlur}
+        onPress={saveSettings}>
         <Text style={styles.saveText}>حفظ الإعدادات</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.logoutButton} focusable={true} onPress={handleLogout}>
+      {/* TV Remote: Logout Button */}
+      <TouchableOpacity 
+        style={[
+          styles.logoutButton,
+          isElementFocused('logoutButton') && styles.tvFocusedButton
+        ]} 
+        focusable={Platform.OS === 'android'}
+        onFocus={() => handleNewFocus('logoutButton')}
+        onBlur={handleNewBlur}
+        onPress={handleLogout}>
         <Ionicons name="log-out-outline" size={20} color="#fff" style={styles.logoutIcon} />
         <Text style={styles.logoutText}>تسجيل الخروج</Text>
       </TouchableOpacity>
@@ -1759,6 +2802,7 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 30,
+    
   },
   label: {
     fontSize: 20,
@@ -1780,9 +2824,9 @@ const styles = StyleSheet.create({
     
   },
   prayersRow: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     flexWrap: 'wrap', // ده هيخلي العناصر تنزل سطر جديد
-    justifyContent: 'center', // رجعتها space-between عشان التوزيع
+    justifyContent: 'flex-start', // رجعتها space-between عشان التوزيع
     paddingHorizontal: 8,
     alignContent:'center'
   },
@@ -1791,20 +2835,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 6,
-    width: '30%', // عرض أكبر عشان الكلام يظهر أحسن
-    minWidth: 60, // أقل عرض أكبر
-    maxWidth: 110, // أقصى عرض أكبر
+    width: '30%', // default width; overridden by orientation-specific styles
+    minWidth: 60,
+    maxWidth: 110,
     marginVertical: 6, // مساحة أكبر بين الصفوف
-    marginHorizontal: 2,
+    marginHorizontal: 5,
     alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
+  borderColor: '#f0f0f0',
+    overflow: 'hidden',
+    
   },
   prayerLabel: {
-    fontSize: 13, // قللت الخط شوية عشان يدخل في السطر
+    fontSize: 14, // قللت الخط شوية عشان يدخل في السطر
     fontWeight: '600',
     marginBottom: 8,
     color: '#2E8B57',
@@ -1823,17 +2866,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
     color: '#000',
   },
+  // Orientation-specific sizing for iqama inputs
+  prayerBoxPortrait: {
+    width: '31.5%',
+    maxWidth: 9999,
+  },
+  prayerBoxLandscape: {
+    width: '20%',
+    maxWidth: 9999,
+  },
   saveButton: {
     backgroundColor: '#28a745',
     paddingVertical: 20,
     borderRadius: 14,
     alignItems: 'center',
     marginTop: 10,
-    shadowColor: "#28a745",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 4,
+    borderWidth: 1,
+  borderColor: '#f0f0f0',
     width:'50%',
     alignSelf:'center'
   },
@@ -1853,6 +2902,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
+    
   },
   subSection: {
     marginTop: 20,
@@ -1932,11 +2982,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+  borderColor: '#f0f0f0',
   },
   resetButton: {
     backgroundColor: '#dc3545',
@@ -2006,11 +3053,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 20,
     marginBottom: 30,
-    shadowColor: "#dc3545",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    borderWidth: 1,
+  borderColor: '#f0f0f0',
+     width:'50%',
+    alignSelf:'center'
   },
   logoutIcon: {
     marginRight: 10,
@@ -2034,27 +3080,37 @@ const styles = StyleSheet.create({
   },
   // Location Settings Styles
 currentLocationCard: {
-  backgroundColor: '#f0f8ff',
+  backgroundColor: '#fff',
   padding: 15,
   borderRadius: 10,
   marginBottom: 15,
-  borderLeftWidth: 4,
-  borderLeftColor: '#2E8B57',
+  width:"50%",
+  justifyContent: 'center',
+  alignItems: 'center',
+  alignSelf: 'center',
+  borderWidth: 2,
+  borderColor: '#f0f0f0',
+  overflow: 'hidden',
 },
 currentLocationTitle: {
-  fontSize: 14,
+  fontSize: 16,
   color: '#666',
   marginBottom: 5,
+  textAlign: 'center',
 },
 currentLocationText: {
-  fontSize: 18,
+  fontSize: 20,
   fontWeight: 'bold',
   color: '#000',
+  textAlign: 'center',
+
 },
 currentLocationSubtext: {
-  fontSize: 14,
+  fontSize: 16,
   color: '#666',
   marginTop: 3,
+  textAlign: 'center',
+
 },
 coordinatesText: {
   fontSize: 12,
@@ -2077,10 +3133,10 @@ methodButton: {
   borderWidth: 2,
   borderColor: '#ddd',
   alignItems: 'center',
-  marginHorizontal: 3,
+  marginHorizontal: 13,
 },
 activeMethodButton: {
-  backgroundColor: '#2E8B57',
+  backgroundColor: '#28a745',
   borderColor: '#2E8B57',
 },
 methodButtonText: {
@@ -2105,7 +3161,7 @@ updateLocationButton: {
   padding: 15,
   borderRadius: 10,
   gap: 10,
-  width: '100%',
+  width: '80%',
 },
 updateLocationButtonText: {
   color: '#fff',
@@ -2197,6 +3253,8 @@ modalTitle: {
   fontSize: 18,
   fontWeight: 'bold',
   color: '#333',
+  textAlign: 'center',
+  width: '100%',
 },
 countryItem: {
   flexDirection: 'row',
@@ -2209,6 +3267,8 @@ countryItem: {
 countryItemText: {
   fontSize: 16,
   color: '#333',
+  textAlign: 'center',
+  width: '100%',
 },
 cityItemModal: {
   flexDirection: 'row',
@@ -2221,5 +3281,88 @@ cityItemModal: {
 cityItemText: {
   fontSize: 16,
   color: '#333',
+  textAlign: 'center',
+  width: '100%',
 },
+
+// ============ TV REMOTE FOCUS STYLES (Android TV) ============
+// These styles create visual feedback when navigating with remote
+tvFocused: {
+  borderWidth: 3,
+  borderColor: '#2E8B57',
+  borderRadius: 12,
+  backgroundColor: 'rgba(46, 139, 87, 0.1)',
+},
+tvFocusedInput: {
+  borderWidth: 3,
+  borderColor: '#2E8B57',
+  backgroundColor: 'rgba(46, 139, 87, 0.05)',
+},
+tvFocusedBox: {
+  borderWidth: 3,
+  borderColor: '#2E8B57',
+  transform: [{ scale: 1.05 }],
+  shadowColor: '#2E8B57',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 6,
+  elevation: 8,
+},
+tvFocusedButton: {
+  borderWidth: 3,
+  borderColor: '#f0f0f0',
+  transform: [{ scale: 1.05 }],
+ 
+  elevation: 10,
+},
+tvFocusedSelect: {
+  borderWidth: 3,
+  borderColor: '#2E8B57',
+  backgroundColor: 'rgba(46, 139, 87, 0.05)',
+},
+// Wrapper for Switch to enable TV focus
+switchWrapper: {
+  padding: 2,
+  borderRadius: 12,
+},
+
+// Focus style for switches
+tvFocusedSwitch: {
+  borderWidth: 3,
+  borderColor: 'rgba(40, 40, 37, 0.27)',
+  borderRadius: 12,
+  backgroundColor: 'rgb(255, 255, 255)',
+  padding: 4,
+  elevation: 12,
+},
+// ============ END TV REMOTE FOCUS STYLES ============
+
+// ============ DAILY WIRD RESTART BUTTON STYLES ============
+restartWirdButton: {
+  backgroundColor: '#4A90E2',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 12,
+  paddingHorizontal: 20,
+  borderRadius: 10,
+  marginTop: 15,
+  shadowColor: '#000',
+  shadowOffset: {
+    width: 0,
+    height: 2,
+  },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+  elevation: 5,
+  
+},
+restartWirdButtonText: {
+  color: 'white',
+  fontSize: 15,
+  fontWeight: 'bold',
+  marginLeft: 8,
+  textAlign: 'center',
+},
+// ============ END DAILY WIRD RESTART BUTTON STYLES ============
 });
