@@ -1,17 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BackHandler } from 'react-native';
 
 export function useTVRemote(callbacks) {
+  // استخدام ref للاحتفاظ بآخر نسخة من callbacks
+  const callbacksRef = useRef(callbacks);
+  
+  // تحديث الـ ref في كل render
   useEffect(() => {
-    console.log('🎮 TV Remote Hook initialized');
+    callbacksRef.current = callbacks;
+  });
+
+  useEffect(() => {
+    // console.log يمكن تفعيله للتطوير فقط
+    // console.log('🎮 TV Remote Hook initialized');
     
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        console.log('🎮 Back button pressed');
+        // console.log للتطوير فقط
+        // console.log('🎮 Back button pressed');
         
-        if (callbacks?.onBack) {
-          callbacks.onBack();
+        if (callbacksRef.current?.onBack) {
+          callbacksRef.current.onBack();
           return true; // منع السلوك الافتراضي
         }
         
@@ -20,8 +30,9 @@ export function useTVRemote(callbacks) {
     );
 
     return () => {
-      console.log('🎮 TV Remote Hook cleaned up');
+      // console.log للتطوير فقط
+      // console.log('🎮 TV Remote Hook cleaned up');
       backHandler.remove();
     };
-  }, [callbacks]);
+  }, []); // مش محتاجين dependencies - الـ hook هيشتغل مرة واحدة بس
 }
